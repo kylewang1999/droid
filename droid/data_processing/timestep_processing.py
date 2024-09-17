@@ -34,7 +34,13 @@ class TimestepProcesser:
 
         self.image_transformer = ImageTransformer(**image_transform_kwargs)
 
-    def forward(self, timestep):
+    def forward(self, timestep, concat_states=True):
+        ''' Process a timestep by concatenating states and applying image transformations
+        Inputs:
+            timestep: dict, timestep from a .h5 file
+            concat_states: bool, False means states are kept as key-value pairs in a dict
+        '''
+        
         # Make Deep Copy #
         timestep = deepcopy(timestep)
 
@@ -70,6 +76,14 @@ class TimestepProcesser:
             extrinsics_state = np.concatenate(extrinsics_state)
 
         ### Get Intrinsics ###
+        if "camera_intrinsics" not in timestep["observation"].keys():
+            intrinsics_placeholder = np.array(
+                [[525.5573120117188, 0.0, 648.11865234375],
+                 [0.0, 525.5573120117188, 374.60589599609375],
+                 [0.0, 0.0, 1.0]])
+            timestep["observation"]["camera_intrinsics"] = \
+                {k:intrinsics_placeholder for k in sorted_calibrated_ids}
+
         cam_intrinsics_obs = timestep["observation"]["camera_intrinsics"]
         sorted_calibrated_ids = sorted(calibration_dict.keys())
         intrinsics_dict = defaultdict(list)
@@ -104,6 +118,12 @@ class TimestepProcesser:
                     if serial_number in full_obs_id:
                         data = obs_type_dict[full_obs_id]
                         high_dim_state_dict[obs_type][cam_type].append(data)
+
+        if not concat_states: 
+            timestep["extrinsics_dict"] = extrinsics_dict
+            timestep["intrinsics_dict"] = intrinsics_dict
+            timestep["observation"]["camera"] = high_dim_state_dict
+            return timestep
 
         ### Finish Observation Portion ###
         low_level_state = np.concatenate([robot_state, extrinsics_state, intrinsics_state], dtype=self.state_dtype)
